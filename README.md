@@ -308,3 +308,46 @@ Assessment: SAFE WITH WARNINGS
 When to run:
 
 Run every ~30 minutes so you know if anything changed.
+
+
+VPN Script
+#!/bin/bash
+
+echo "[+] Installing OpenVPN..."
+apt update -y >/dev/null 2>&1
+apt install -y openvpn curl wget >/dev/null 2>&1
+
+VPN_DIR="/etc/openvpn/client"
+CONFIG="$VPN_DIR/vpnbook.ovpn"
+AUTH="$VPN_DIR/auth.txt"
+
+echo "[+] Creating directories..."
+mkdir -p "$VPN_DIR"
+
+echo "[+] Downloading working VPNBook OpenVPN config..."
+wget -q -O "$CONFIG" "https://www.vpnbook.com/free-openvpn-account/VPNBook.com-OpenVPN-US1.ovpn"
+
+if [ ! -f "$CONFIG" ]; then
+    echo "[!] Failed to download VPN config. Exiting."
+    exit 1
+fi
+
+echo "[+] Fetching latest VPNBook password..."
+PASS=$(curl -s https://www.vpnbook.com/freevpn | grep -A2 "Password" | tail -n1 | sed 's/<[^>]*>//g' | xargs)
+
+if [ -z "$PASS" ]; then
+    echo "[!] Could not retrieve VPNBook password automatically."
+    exit 1
+fi
+
+echo "[+] Creating auth file..."
+echo "vpnbook" > "$AUTH"
+echo "$PASS" >> "$AUTH"
+chmod 600 "$AUTH"
+
+echo "[+] Updating .ovpn to use auth file..."
+sed -i "s/auth-user-pass/auth-user-pass $AUTH/" "$CONFIG"
+
+echo "[+] Starting VPN... (press CTRL+C to disconnect)"
+openvpn --config "$CONFIG"
+
