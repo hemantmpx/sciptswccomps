@@ -310,44 +310,41 @@ When to run:
 Run every ~30 minutes so you know if anything changed.
 
 
-VPN Script
+Firewall
+
 #!/bin/bash
 
-echo "[+] Installing OpenVPN..."
-apt update -y >/dev/null 2>&1
-apt install -y openvpn curl wget >/dev/null 2>&1
+echo "[+] Flushing existing rules..."
+iptables -F
+iptables -X
 
-VPN_DIR="/etc/openvpn/client"
-CONFIG="$VPN_DIR/vpnbook.ovpn"
-AUTH="$VPN_DIR/auth.txt"
+echo "[+] Allowing loopback..."
+iptables -A INPUT -i lo -j ACCEPT
 
-echo "[+] Creating directories..."
-mkdir -p "$VPN_DIR"
+echo "[+] Allowing established and related connections..."
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-echo "[+] Downloading working VPNBook OpenVPN config..."
-wget -q -O "$CONFIG" "https://www.vpnbook.com/free-openvpn-account/VPNBook.com-OpenVPN-US1.ovpn"
+echo "[+] Allowing FTP control port (21)..."
+iptables -A INPUT -p tcp --dport 21 -j ACCEPT
 
-if [ ! -f "$CONFIG" ]; then
-    echo "[!] Failed to download VPN config. Exiting."
-    exit 1
-fi
+echo "[+] Allowing FTP passive port range (30000–31000)..."
+iptables -A INPUT -p tcp --dport 30000:31000 -j ACCEPT
 
-echo "[+] Fetching latest VPNBook password..."
-PASS=$(curl -s https://www.vpnbook.com/freevpn | grep -A2 "Password" | tail -n1 | sed 's/<[^>]*>//g' | xargs)
+# OPTIONAL: Uncomment if you WANT SSH
+# echo "[+] Allowing SSH (22)..."
+# iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 
-if [ -z "$PASS" ]; then
-    echo "[!] Could not retrieve VPNBook password automatically."
-    exit 1
-fi
+echo "[+] Setting default DROP policies..."
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
 
-echo "[+] Creating auth file..."
-echo "vpnbook" > "$AUTH"
-echo "$PASS" >> "$AUTH"
-chmod 600 "$AUTH"
+echo "[+] Installing iptables-persistent if needed..."
+apt-get install -y iptables-persistent >/dev/null 2>&1
 
-echo "[+] Updating .ovpn to use auth file..."
-sed -i "s/auth-user-pass/auth-user-pass $AUTH/" "$CONFIG"
+echo "[+] Saving rules..."
+netfilter-persistent save
 
-echo "[+] Starting VPN... (press CTRL+C to disconnect)"
-openvpn --config "$CONFIG"
+echo "[+] Firewalls applied successfully. FTP-only mode enabled."
+
 
